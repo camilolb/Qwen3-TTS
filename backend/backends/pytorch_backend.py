@@ -4,6 +4,7 @@ PyTorch backend implementation for TTS and STT.
 
 from typing import Optional, List, Tuple
 import asyncio
+import os
 import torch
 import numpy as np
 from pathlib import Path
