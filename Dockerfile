@@ -40,15 +40,16 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=1
 
 # Pre-descargar modelos durante la construcción (CRÍTICO para modo offline y rendimiento)
-RUN python3 -c "import os; os.environ['HF_HOME'] = '/app/models'; os.environ['HF_HUB_CACHE'] = '/app/models'; from huggingface_hub import snapshot_download; \
+# Forzamos la descarga del 0.6B que es el recomendado
+RUN python3 -c "from huggingface_hub import snapshot_download; \
     print('Descargando modelos...'); \
-    snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base'); \
-    snapshot_download('openai/whisper-base'); \
+    snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base', local_dir='/app/models/qwen-tts-0.6B'); \
+    snapshot_download('openai/whisper-base', local_dir='/app/models/whisper-base'); \
     print('Modelos descargados exitosamente!')"
 
-# Ahora sí habilitar modo offline después de descargar el modelo
-ENV TRANSFORMERS_OFFLINE=1
-ENV HF_HUB_OFFLINE=1
+# NO activamos el modo offline para que el backend pueda validar el cache en el primer arranque
+ENV HF_HUB_OFFLINE=0
+ENV TRANSFORMERS_OFFLINE=0
 
 # Verificar que el modelo esté descargado
 RUN ls -la /app/models/ && echo 'Verificación completa'
