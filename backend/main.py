@@ -42,7 +42,7 @@ def _safe_content_disposition(disposition_type: str, filename: str) -> str:
 
 
 from . import database, models, profiles, history, tts, transcribe, config, export_import, channels, stories, __version__
-from .database import get_db, Generation as DBGeneration, VoiceProfile as DBVoiceProfile
+from .database import get_db, Generation as DBGeneration, VoiceProfile as DBVoiceProfile, GenerationTask as DBGenerationTask
 from .utils.progress import get_progress_manager
 from .utils.tasks import get_task_manager
 from .utils.cache import clear_voice_prompt_cache
@@ -582,67 +582,56 @@ async def _background_generate_task(
     generation_id: str,
     data: models.GenerationRequest,
 ):
-    """Background task to perform speech generation."""
+    """Background task to perform speech generation with DB tracking."""
     task_manager = get_task_manager()
-    from .database import SessionLocal
+    from .database import SessionLocal, GenerationTask as DBGenerationTask
     db = SessionLocal()
     
     try:
         # Get profile
         profile = await profiles.get_profile(data.profile_id, db)
         if not profile:
-            task_manager.error_generation(generation_id, "Profile not found")
+            error_msg = "Profile not found"
+            task_manager.error_generation(generation_id, error_msg)
+            db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "error", "error": error_msg})
+            db.commit()
             return
 
         # Resolve model size and load
         tts_model = tts.get_tts_model()
         model_size = data.model_size or "0.6B"
-        
-        # Ensure model is loaded
         await tts_model.load_model_async(model_size)
 
         # Create voice prompt
-        voice_prompt = await profiles.create_voice_prompt_for_profile(
-            data.profile_id,
-            db,
-        )
+        voice_prompt = await profiles.create_voice_prompt_for_profile(data.profile_id, db)
 
         # Generate audio
-        audio, sample_rate = await tts_model.generate(
-            data.text,
-            voice_prompt,
-            data.language,
-            data.seed,
-            data.instruct,
-        )
-
-        # Calculate duration
-        duration = len(audio) / sample_rate
+        audio, sample_rate = await tts_model.generate(data.text, voice_prompt, data.language, data.seed, data.instruct)
 
         # Save audio
+        duration = len(audio) / sample_rate
         audio_path = config.get_generations_dir() / f"{generation_id}.wav"
         from .utils.audio import save_audio
         save_audio(audio, str(audio_path), sample_rate)
 
         # Create history entry
         await history.create_generation(
-            profile_id=data.profile_id,
-            text=data.text,
-            language=data.language,
-            audio_path=str(audio_path),
-            duration=duration,
-            seed=data.seed,
-            db=db,
-            instruct=data.instruct,
-            generation_id=generation_id,
+            profile_id=data.profile_id, text=data.text, language=data.language,
+            audio_path=str(audio_path), duration=duration, seed=data.seed,
+            db=db, instruct=data.instruct, generation_id=generation_id,
         )
         
-        # Mark generation as complete
+        # Mark as completed in DB and memory
+        db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "completed"})
+        db.commit()
         task_manager.complete_generation(generation_id)
         
     except Exception as e:
-        print(f"Error in background generation: {str(e)}")
-        task_manager.error_generation(generation_id, str(e))
+        error_msg = str(e)
+        print(f"Error in background generation: {error_msg}")
+        task_manager.error_generation(generation_id, error_msg)
+        db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "error", "error": error_msg})
+        db.commit()
     finally:
         db.close()
 
@@ -653,40 +642,21 @@ async def generate_speech_async(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Start an asynchronous speech generation task (n8n compatible)."""
-    task_manager = get_task_manager()
+    """Start an asynchronous speech generation task with DB persistence."""
     generation_id = str(uuid.uuid4())
     
-    # Check profile existence before starting
+    # Check profile existence
     profile = await profiles.get_profile(data.profile_id, db)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    # Resolve model size
-    tts_model = tts.get_tts_model()
-    model_size = data.model_size or "0.6B"
+    # Create Task in DB immediately
+    new_task = DBGenerationTask(id=generation_id, status="processing")
+    db.add(new_task)
+    db.commit()
 
-    # Check model cache
-    if not tts_model._is_model_cached(model_size):
-        model_name = f"qwen-tts-{model_size}"
-        async def download_model_background():
-            try:
-                await tts_model.load_model_async(model_size)
-            except Exception as e:
-                task_manager.error_download(model_name, str(e))
-        task_manager.start_download(model_name)
-        asyncio.create_task(download_model_background())
-        raise HTTPException(
-            status_code=202,
-            detail={
-                "message": f"Model {model_name} downloading",
-                "model_name": model_name,
-                "downloading": True,
-            },
-        )
-
-    # Start tracking and run background task
-    task_manager.start_generation(generation_id, data.profile_id, data.text)
+    # Start tracking in memory (for current worker) and background
+    get_task_manager().start_generation(generation_id, data.profile_id, data.text)
     background_tasks.add_task(_background_generate_task, generation_id, data)
     
     return models.AsyncGenerationResponse(id=generation_id)
@@ -697,28 +667,24 @@ async def get_generation_status(
     generation_id: str,
     db: Session = Depends(get_db),
 ):
-    """Poll the status of a generation task (n8n compatible)."""
-    task_manager = get_task_manager()
+    """Poll the status of a generation task from DB (reliable for n8n)."""
+    # Consultar la base de datos (fuente de verdad multi-proceso)
+    task = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
     
-    # 1. Check active/failed
-    status = task_manager.get_generation_status(generation_id)
-    if status == "processing":
-        return models.GenerationStatusResponse(id=generation_id, status="processing")
-    elif status == "error":
-        error = task_manager.get_generation_error(generation_id)
-        return models.GenerationStatusResponse(id=generation_id, status="error", error=error)
-    
-    # 2. Check completed (database)
-    gen = await history.get_generation(generation_id, db)
-    if gen:
-        return models.GenerationStatusResponse(
-            id=generation_id,
-            status="completed",
-            audio_path=gen.audio_path,
-            duration=gen.duration
-        )
-    
-    raise HTTPException(status_code=404, detail="Task not found")
+    if not task:
+        # Fallback: check history in case task record was cleaned or sync generated
+        gen = await history.get_generation(generation_id, db)
+        if gen:
+            return models.GenerationStatusResponse(id=generation_id, status="completed", audio_path=gen.audio_path, duration=gen.duration)
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status == "completed":
+        gen = await history.get_generation(generation_id, db)
+        if gen:
+            return models.GenerationStatusResponse(id=generation_id, status="completed", audio_path=gen.audio_path, duration=gen.duration)
+        return models.GenerationStatusResponse(id=generation_id, status="completed")
+
+    return models.GenerationStatusResponse(id=generation_id, status=task.status, error=task.error)
 
 
 @app.post("/generate", response_model=models.GenerationResponse)

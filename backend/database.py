@@ -52,6 +52,17 @@ class Generation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class GenerationTask(Base):
+    """Task tracking to avoid multi-worker issues."""
+    __tablename__ = "generation_tasks"
+
+    id = Column(String, primary_key=True)
+    status = Column(String, default="processing") # processing, error, completed
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Story(Base):
     """Story database model."""
     __tablename__ = "stories"
