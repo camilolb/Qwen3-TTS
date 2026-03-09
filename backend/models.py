@@ -69,6 +69,7 @@ class GenerationResponse(BaseModel):
     duration: float
     seed: Optional[int]
     instruct: Optional[str]
+    binario: Optional[str] = Field(None, alias="binary_base64") # Base64 for n8n
     created_at: datetime
 
     class Config:
@@ -88,6 +89,7 @@ class GenerationStatusResponse(BaseModel):
     # Included when status is 'completed'
     audio_path: Optional[str] = None
     duration: Optional[float] = None
+    binario: Optional[str] = Field(None, alias="binary_base64") # Base64 for n8n
     error: Optional[str] = None
 
 

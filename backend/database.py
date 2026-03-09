@@ -49,6 +49,7 @@ class Generation(Base):
     duration = Column(Float, nullable=False)
     seed = Column(Integer)
     instruct = Column(Text)
+    binary_base64 = Column(Text, nullable=True) # For n8n binary transfer
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

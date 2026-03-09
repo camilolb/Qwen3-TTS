@@ -23,6 +23,7 @@ import asyncio
 import signal
 import os
 from urllib.parse import quote
+import base64
 
 
 def _safe_content_disposition(disposition_type: str, filename: str) -> str:
@@ -621,11 +622,17 @@ async def _background_generate_task(
             from .utils.audio import save_audio
             save_audio(audio, str(audio_path), sample_rate)
 
+            # Convert to base64 for n8n support
+            
+            with open(audio_path, "rb") as f:
+                binary_base64 = base64.b64encode(f.read()).decode('utf-8')
+
             # History entry
             await history.create_generation(
                 profile_id=data.profile_id, text=data.text, language=data.language,
                 audio_path=str(audio_path), duration=duration, seed=data.seed,
                 db=db, instruct=data.instruct, generation_id=generation_id,
+                binary_base64=binary_base64
             )
             
             # Completed
@@ -707,13 +714,21 @@ async def get_generation_status(
         # Fallback: check history in case task record was cleaned or sync generated
         gen = await history.get_generation(generation_id, db)
         if gen:
-            return models.GenerationStatusResponse(id=generation_id, status="completed", audio_path=gen.audio_path, duration=gen.duration)
+            return models.GenerationStatusResponse(
+                id=generation_id, status="completed", 
+                audio_path=gen.audio_path, duration=gen.duration, 
+                binario=gen.binario
+            )
         raise HTTPException(status_code=404, detail="Task not found")
 
     if task.status == "completed":
         gen = await history.get_generation(generation_id, db)
         if gen:
-            return models.GenerationStatusResponse(id=generation_id, status="completed", audio_path=gen.audio_path, duration=gen.duration)
+            return models.GenerationStatusResponse(
+                id=generation_id, status="completed", 
+                audio_path=gen.audio_path, duration=gen.duration, 
+                binario=gen.binario
+            )
         return models.GenerationStatusResponse(id=generation_id, status="completed")
 
     return models.GenerationStatusResponse(id=generation_id, status=task.status, error=task.error)
@@ -803,6 +818,11 @@ async def generate_speech(
             from .utils.audio import save_audio
             save_audio(audio, str(audio_path), sample_rate)
 
+            # Convert to base64 for n8n support
+            
+            with open(audio_path, "rb") as f:
+                binary_base64 = base64.b64encode(f.read()).decode('utf-8')
+
             # Create history entry
             generation = await history.create_generation(
                 profile_id=data.profile_id,
@@ -814,6 +834,7 @@ async def generate_speech(
                 db=db,
                 instruct=data.instruct,
                 generation_id=generation_id,
+                binary_base64=binary_base64
             )
             
             # Mark generation as complete

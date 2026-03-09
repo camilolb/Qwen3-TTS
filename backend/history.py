@@ -30,6 +30,7 @@ async def create_generation(
     db: Session,
     instruct: Optional[str] = None,
     generation_id: Optional[str] = None,
+    binary_base64: Optional[str] = None,
 ) -> GenerationResponse:
     """
     Create a new generation history entry.
@@ -44,6 +45,7 @@ async def create_generation(
         db: Database session
         instruct: Natural language instruction used (if any)
         generation_id: Optional ID to use for this generation (defaults to new UUID)
+        binary_base64: Optional base64 encoded audio string
 
     Returns:
         Created generation entry
@@ -57,6 +59,7 @@ async def create_generation(
         duration=duration,
         seed=seed,
         instruct=instruct,
+        binary_base64=binary_base64,
         created_at=datetime.utcnow(),
     )
 
