@@ -166,12 +166,12 @@ async def health():
     # Check if default model is downloaded (cached)
     model_downloaded = None
     try:
-        # Check if the default model (1.7B) is cached
+        # Check if the default model (0.6B) is cached
         # Use different model IDs based on backend
         if backend_type == "mlx":
-            default_model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+            default_model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16" # MLX fallback
         else:
-            default_model_id = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+            default_model_id = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
         
         # Method 1: Try scan_cache_dir if available
         try:
@@ -1224,7 +1224,7 @@ async def get_sample_audio(sample_id: str, db: Session = Depends(get_db)):
 # ============================================
 
 @app.post("/models/load")
-async def load_model(model_size: str = "1.7B"):
+async def load_model(model_size: str = "0.6B"):
     """Manually load TTS model."""
     try:
         tts_model = tts.get_tts_model()

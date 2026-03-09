@@ -58,7 +58,7 @@ class PyTorchTTSBackend:
         Get the HuggingFace Hub model ID.
         
         Args:
-            model_size: Model size (1.7B or 0.6B)
+            model_size: Model size (0.6B)
             
         Returns:
             HuggingFace Hub model ID
@@ -117,7 +117,7 @@ class PyTorchTTSBackend:
         Lazy load the TTS model with automatic downloading from HuggingFace Hub.
         
         Args:
-            model_size: Model size to load (1.7B or 0.6B)
+            model_size: Model size to load (0.6B)
         """
         if model_size is None:
             model_size = self.model_size

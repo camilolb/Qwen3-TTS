@@ -32,8 +32,12 @@ ENV TOKENIZERS_PARALLELISM=false
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=1
 
-# Pre-descargar el modelo 0.6B durante la construcción (CRÍTICO)
-RUN python3 -c "import os; os.environ['HF_HOME'] = '/app/models'; os.environ['HF_HUB_CACHE'] = '/app/models'; from huggingface_hub import snapshot_download; print('Descargando modelo Qwen3-TTS 0.6B...'); snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base'); print('Modelo 0.6B descargado exitosamente!')"
+# Pre-descargar modelos durante la construcción (CRÍTICO para modo offline y rendimiento)
+RUN python3 -c "import os; os.environ['HF_HOME'] = '/app/models'; os.environ['HF_HUB_CACHE'] = '/app/models'; from huggingface_hub import snapshot_download; \
+    print('Descargando modelos...'); \
+    snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base'); \
+    snapshot_download('openai/whisper-base'); \
+    print('Modelos descargados exitosamente!')"
 
 # Ahora sí habilitar modo offline después de descargar el modelo
 ENV TRANSFORMERS_OFFLINE=1
