@@ -34,6 +34,9 @@ RUN python3 -c "from huggingface_hub import snapshot_download; \
     print('Pre-descargando modelo...'); \
     snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base', cache_dir='/app/models')"
 
-# Configuración de inicio para Zero Downtime y estabilidad de RAM
+# Configuración# Use tini to handle signals and zombie processes properly
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+# Run uvicorn with a single worker to prevent RAM exhaustion (Model takes ~3GB+)
+# Threading is handled internally by PyTorch and the TaskManager
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--loop", "uvloop"]

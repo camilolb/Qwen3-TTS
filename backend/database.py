@@ -149,7 +149,10 @@ def init_db():
     # Run migrations before creating tables
     _run_migrations(engine)
     
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"Note: Database tables might already exist or are being created by another process: {e}")
     
     # Create default channel if it doesn't exist
     db = SessionLocal()

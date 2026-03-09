@@ -34,6 +34,9 @@ class TaskManager:
         self._active_downloads: Dict[str, DownloadTask] = {}
         self._active_generations: Dict[str, GenerationTask] = {}
         self._failed_generations: Dict[str, GenerationTask] = {} # Keep errors for polling
+        import asyncio
+        self.generation_lock = asyncio.Lock() # Solo una generación a la vez
+        self._task_handles: Dict[str, asyncio.Task] = {} # Para poder cancelar
     
     def start_download(self, model_name: str) -> None:
         """Mark a download as started."""
@@ -68,6 +71,19 @@ class TaskManager:
             del self._active_generations[task_id]
         if task_id in self._failed_generations:
             del self._failed_generations[task_id]
+        if task_id in self._task_handles:
+            del self._task_handles[task_id]
+    
+    def register_task_handle(self, task_id: str, handle: asyncio.Task) -> None:
+        """Store the asyncio Task handle for cancellation."""
+        self._task_handles[task_id] = handle
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running task."""
+        if task_id in self._task_handles:
+            self._task_handles[task_id].cancel()
+            return True
+        return False
     
     def error_generation(self, task_id: str, error: str) -> None:
         """Mark a generation as failed."""
