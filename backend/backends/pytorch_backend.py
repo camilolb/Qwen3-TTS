@@ -348,20 +348,25 @@ class PyTorchTTSBackend:
         await self.load_model_async(None)
 
         def _generate_sync():
-            """Run synchronous generation in thread pool."""
-            # Set seed if provided
-            if seed is not None:
-                torch.manual_seed(seed)
-                if torch.cuda.is_available():
-                    torch.cuda.manual_seed(seed)
+            """Run synchronous generation in thread pool with CPU optimizations."""
+            # Ensure CPU optimizations are active
+            torch.set_flush_denormal(True)
+            num_threads = int(os.environ.get("TORCH_NUM_THREADS", "5"))
+            torch.set_num_threads(num_threads)
 
-            # Generate audio - this is the blocking operation
-            wavs, sample_rate = self.model.generate_voice_clone(
-                text=text,
-                voice_clone_prompt=voice_prompt,
-                instruct=instruct,
-            )
-            return wavs[0], sample_rate
+            # Use inference_mode for maximum performance on CPU
+            with torch.inference_mode():
+                # Set seed if provided
+                if seed is not None:
+                    torch.manual_seed(seed)
+                
+                # Generate audio - this is the blocking operation
+                wavs, sample_rate = self.model.generate_voice_clone(
+                    text=text,
+                    voice_clone_prompt=voice_prompt,
+                    instruct=instruct,
+                )
+                return wavs[0], sample_rate
 
         # Run blocking inference in thread pool to avoid blocking event loop
         audio, sample_rate = await asyncio.to_thread(_generate_sync)

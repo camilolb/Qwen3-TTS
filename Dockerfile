@@ -1,7 +1,7 @@
 FROM ghcr.io/jamiepine/voicebox:latest
 
-# Instalar git (necesario para clonar el repo)
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+# Instalar tini para estabilidad de procesos
+RUN apt-get update && apt-get install -y git tini && rm -rf /var/lib/apt/lists/*
 
 # Crear directorios para modelos
 RUN mkdir -p /app/models
@@ -12,44 +12,28 @@ COPY . .
 
 # Instalar dependencias del backend
 RUN pip install --no-cache-dir -r backend/requirements.txt
-# Asegurar que qwen-tts esté instalado desde el repo oficial si no está en PyPI
+# Asegurar que qwen-tts esté instalado desde el repo oficial
 RUN pip install --no-cache-dir git+https://github.com/QwenLM/Qwen3-TTS.git
 
+# Variables de entorno Core
 ENV PYTHONPATH=/opt/Qwen3-TTS
-
-# Configurar variables de entorno para modelos (sin offline mode aún)
-ENV HF_HOME=/app/models
-ENV HF_HUB_CACHE=/app/models
-ENV XDG_CACHE_HOME=/app/models
-
-# Configuración forzada para modelo 0.6B
-ENV QWEN_TTS_MODEL=0.6B
 ENV DEVICE=cpu
 ENV CUDA_VISIBLE_DEVICES=""
+ENV HF_HOME=/app/models
 
-# Optimizaciones críticas de rendimiento para CPU
-ENV OMP_NUM_THREADS=8
-ENV MKL_NUM_THREADS=8
-ENV NUMEXPR_NUM_THREADS=8
-ENV TORCH_NUM_THREADS=8
-ENV OPENBLAS_NUM_THREADS=8
-ENV PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
-ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-ENV TOKENIZERS_PARALLELISM=false
+# Optimización para tus 5 núcleos
+ENV OMP_NUM_THREADS=5
+ENV MKL_NUM_THREADS=5
+ENV TORCH_NUM_THREADS=5
+ENV OPENBLAS_NUM_THREADS=5
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=1
 
-# Pre-descargar modelos durante la construcción (CRÍTICO para modo offline y rendimiento)
-# Forzamos la descarga del 0.6B que es el recomendado
+# Pre-descarga del modelo (para que el arranque sea inmediato)
 RUN python3 -c "from huggingface_hub import snapshot_download; \
-    print('Descargando modelos...'); \
-    snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base', local_dir='/app/models/qwen-tts-0.6B'); \
-    snapshot_download('openai/whisper-base', local_dir='/app/models/whisper-base'); \
-    print('Modelos descargados exitosamente!')"
+    print('Pre-descargando modelo...'); \
+    snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base', cache_dir='/app/models')"
 
-# NO activamos el modo offline para que el backend pueda validar el cache en el primer arranque
-ENV HF_HUB_OFFLINE=0
-ENV TRANSFORMERS_OFFLINE=0
-
-# Verificar que el modelo esté descargado
-RUN ls -la /app/models/ && echo 'Verificación completa'
+# Configuración de inicio para Zero Downtime y estabilidad de RAM
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
