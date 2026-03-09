@@ -22,6 +22,8 @@ class GenerationTask:
     task_id: str
     profile_id: str
     text_preview: str  # First 50 chars of text
+    status: str = "processing" # processing, complete, error
+    error: Optional[str] = None
     started_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -31,6 +33,7 @@ class TaskManager:
     def __init__(self):
         self._active_downloads: Dict[str, DownloadTask] = {}
         self._active_generations: Dict[str, GenerationTask] = {}
+        self._failed_generations: Dict[str, GenerationTask] = {} # Keep errors for polling
     
     def start_download(self, model_name: str) -> None:
         """Mark a download as started."""
@@ -63,6 +66,30 @@ class TaskManager:
         """Mark a generation as complete."""
         if task_id in self._active_generations:
             del self._active_generations[task_id]
+        if task_id in self._failed_generations:
+            del self._failed_generations[task_id]
+    
+    def error_generation(self, task_id: str, error: str) -> None:
+        """Mark a generation as failed."""
+        if task_id in self._active_generations:
+            task = self._active_generations.pop(task_id)
+            task.status = "error"
+            task.error = error
+            self._failed_generations[task_id] = task
+
+    def get_generation_status(self, task_id: str) -> Optional[str]:
+        """Get the status of a generation."""
+        if task_id in self._active_generations:
+            return "processing"
+        if task_id in self._failed_generations:
+            return "error"
+        return None
+
+    def get_generation_error(self, task_id: str) -> Optional[str]:
+        """Get the error message for a generation."""
+        if task_id in self._failed_generations:
+            return self._failed_generations[task_id].error
+        return None
     
     def get_active_downloads(self) -> List[DownloadTask]:
         """Get all active downloads."""

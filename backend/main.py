@@ -4,7 +4,7 @@ FastAPI application for voicebox backend.
 Handles voice cloning, generation history, and server mode.
 """
 
-from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -578,6 +578,149 @@ async def set_profile_channels(
 # GENERATION ENDPOINTS
 # ============================================
 
+async def _background_generate_task(
+    generation_id: str,
+    data: models.GenerationRequest,
+):
+    """Background task to perform speech generation."""
+    task_manager = get_task_manager()
+    from .database import SessionLocal
+    db = SessionLocal()
+    
+    try:
+        # Get profile
+        profile = await profiles.get_profile(data.profile_id, db)
+        if not profile:
+            task_manager.error_generation(generation_id, "Profile not found")
+            return
+
+        # Resolve model size and load
+        tts_model = tts.get_tts_model()
+        model_size = data.model_size or "0.6B"
+        
+        # Ensure model is loaded
+        await tts_model.load_model_async(model_size)
+
+        # Create voice prompt
+        voice_prompt = await profiles.create_voice_prompt_for_profile(
+            data.profile_id,
+            db,
+        )
+
+        # Generate audio
+        audio, sample_rate = await tts_model.generate(
+            data.text,
+            voice_prompt,
+            data.language,
+            data.seed,
+            data.instruct,
+        )
+
+        # Calculate duration
+        duration = len(audio) / sample_rate
+
+        # Save audio
+        audio_path = config.get_generations_dir() / f"{generation_id}.wav"
+        from .utils.audio import save_audio
+        save_audio(audio, str(audio_path), sample_rate)
+
+        # Create history entry
+        await history.create_generation(
+            profile_id=data.profile_id,
+            text=data.text,
+            language=data.language,
+            audio_path=str(audio_path),
+            duration=duration,
+            seed=data.seed,
+            db=db,
+            instruct=data.instruct,
+            generation_id=generation_id,
+        )
+        
+        # Mark generation as complete
+        task_manager.complete_generation(generation_id)
+        
+    except Exception as e:
+        print(f"Error in background generation: {str(e)}")
+        task_manager.error_generation(generation_id, str(e))
+    finally:
+        db.close()
+
+
+@app.post("/generate/async", response_model=models.AsyncGenerationResponse)
+async def generate_speech_async(
+    data: models.GenerationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Start an asynchronous speech generation task (n8n compatible)."""
+    task_manager = get_task_manager()
+    generation_id = str(uuid.uuid4())
+    
+    # Check profile existence before starting
+    profile = await profiles.get_profile(data.profile_id, db)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Resolve model size
+    tts_model = tts.get_tts_model()
+    model_size = data.model_size or "0.6B"
+
+    # Check model cache
+    if not tts_model._is_model_cached(model_size):
+        model_name = f"qwen-tts-{model_size}"
+        async def download_model_background():
+            try:
+                await tts_model.load_model_async(model_size)
+            except Exception as e:
+                task_manager.error_download(model_name, str(e))
+        task_manager.start_download(model_name)
+        asyncio.create_task(download_model_background())
+        raise HTTPException(
+            status_code=202,
+            detail={
+                "message": f"Model {model_name} downloading",
+                "model_name": model_name,
+                "downloading": True,
+            },
+        )
+
+    # Start tracking and run background task
+    task_manager.start_generation(generation_id, data.profile_id, data.text)
+    background_tasks.add_task(_background_generate_task, generation_id, data)
+    
+    return models.AsyncGenerationResponse(id=generation_id)
+
+
+@app.get("/generate/{generation_id}/status", response_model=models.GenerationStatusResponse)
+async def get_generation_status(
+    generation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Poll the status of a generation task (n8n compatible)."""
+    task_manager = get_task_manager()
+    
+    # 1. Check active/failed
+    status = task_manager.get_generation_status(generation_id)
+    if status == "processing":
+        return models.GenerationStatusResponse(id=generation_id, status="processing")
+    elif status == "error":
+        error = task_manager.get_generation_error(generation_id)
+        return models.GenerationStatusResponse(id=generation_id, status="error", error=error)
+    
+    # 2. Check completed (database)
+    gen = await history.get_generation(generation_id, db)
+    if gen:
+        return models.GenerationStatusResponse(
+            id=generation_id,
+            status="completed",
+            audio_path=gen.audio_path,
+            duration=gen.duration
+        )
+    
+    raise HTTPException(status_code=404, detail="Task not found")
+
+
 @app.post("/generate", response_model=models.GenerationResponse)
 async def generate_speech(
     data: models.GenerationRequest,
@@ -671,6 +814,7 @@ async def generate_speech(
             seed=data.seed,
             db=db,
             instruct=data.instruct,
+            generation_id=generation_id,
         )
         
         # Mark generation as complete

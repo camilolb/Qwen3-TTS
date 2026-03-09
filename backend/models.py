@@ -75,6 +75,22 @@ class GenerationResponse(BaseModel):
         from_attributes = True
 
 
+class AsyncGenerationResponse(BaseModel):
+    """Initial response for asynchronous generation."""
+    id: str
+    status: str = "processing"
+
+
+class GenerationStatusResponse(BaseModel):
+    """Response model for checking generation status."""
+    id: str
+    status: str  # processing, completed, error
+    # Included when status is 'completed'
+    audio_path: Optional[str] = None
+    duration: Optional[float] = None
+    error: Optional[str] = None
+
+
 class HistoryQuery(BaseModel):
     """Query model for generation history."""
     profile_id: Optional[str] = None

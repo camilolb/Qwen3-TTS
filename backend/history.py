@@ -29,6 +29,7 @@ async def create_generation(
     seed: Optional[int],
     db: Session,
     instruct: Optional[str] = None,
+    generation_id: Optional[str] = None,
 ) -> GenerationResponse:
     """
     Create a new generation history entry.
@@ -42,12 +43,13 @@ async def create_generation(
         seed: Random seed used (if any)
         db: Database session
         instruct: Natural language instruction used (if any)
+        generation_id: Optional ID to use for this generation (defaults to new UUID)
 
     Returns:
         Created generation entry
     """
     db_generation = DBGeneration(
-        id=str(uuid.uuid4()),
+        id=generation_id or str(uuid.uuid4()),
         profile_id=profile_id,
         text=text,
         language=language,
