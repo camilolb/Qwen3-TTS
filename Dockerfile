@@ -10,12 +10,10 @@ RUN mkdir -p /app/models
 RUN git clone https://github.com/camilolb/Qwen3-TTS.git /opt/Qwen3-TTS
 ENV PYTHONPATH=/opt/Qwen3-TTS
 
-# Configurar variables de entorno para modelos y offline mode
+# Configurar variables de entorno para modelos (sin offline mode aún)
 ENV HF_HOME=/app/models
 ENV HF_HUB_CACHE=/app/models
 ENV XDG_CACHE_HOME=/app/models
-ENV TRANSFORMERS_OFFLINE=1
-ENV HF_HUB_OFFLINE=1
 
 # Configuración forzada para modelo 0.6B
 ENV QWEN_TTS_MODEL=0.6B
@@ -36,6 +34,10 @@ ENV PYTHONOPTIMIZE=1
 
 # Pre-descargar el modelo 0.6B durante la construcción (CRÍTICO)
 RUN python3 -c "import os; os.environ['HF_HOME'] = '/app/models'; os.environ['HF_HUB_CACHE'] = '/app/models'; from huggingface_hub import snapshot_download; print('Descargando modelo Qwen3-TTS 0.6B...'); snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base'); print('Modelo 0.6B descargado exitosamente!')"
+
+# Ahora sí habilitar modo offline después de descargar el modelo
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
 
 # Verificar que el modelo esté descargado
 RUN ls -la /app/models/ && echo 'Verificación completa'
