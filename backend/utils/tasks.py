@@ -3,6 +3,7 @@ Task tracking for active downloads and generations.
 """
 
 from typing import Optional, Dict, List
+import asyncio
 from datetime import datetime
 from dataclasses import dataclass, field
 
@@ -34,7 +35,6 @@ class TaskManager:
         self._active_downloads: Dict[str, DownloadTask] = {}
         self._active_generations: Dict[str, GenerationTask] = {}
         self._failed_generations: Dict[str, GenerationTask] = {} # Keep errors for polling
-        import asyncio
         self.generation_lock = asyncio.Lock() # Solo una generación a la vez
         self._task_handles: Dict[str, asyncio.Task] = {} # Para poder cancelar
     
