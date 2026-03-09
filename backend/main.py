@@ -608,7 +608,7 @@ async def generate_speech(
         # If the model is already loaded with the right size at that point, it
         # returns immediately and the voice prompt is created by the correct model.
         tts_model = tts.get_tts_model()
-        model_size = data.model_size or "1.7B"
+        model_size = data.model_size or "0.6B"
 
         # Check if model needs to be downloaded first
         model_path = tts_model._get_model_path(model_size)
@@ -703,7 +703,7 @@ async def stream_speech(
         raise HTTPException(status_code=404, detail="Profile not found")
 
     tts_model = tts.get_tts_model()
-    model_size = data.model_size or "1.7B"
+    model_size = data.model_size or "0.6B"
 
     if not tts_model._is_model_cached(model_size):
         raise HTTPException(

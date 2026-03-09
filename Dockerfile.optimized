@@ -50,27 +50,17 @@ ENV OPENBLAS_NUM_THREADS=8
 ENV PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
+# Pre-descargar el modelo 0.6B durante la construcción
+RUN python3 -c "import os; os.environ['HF_HOME'] = '/app/models'; os.environ['HF_HUB_CACHE'] = '/app/models'; from huggingface_hub import snapshot_download; print('Descargando modelo Qwen3-TTS 0.6B...'); snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base'); print('Modelo descargado exitosamente!')"
+
+# Ahora sí habilitar modo offline después de descargar el modelo
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
+
 # Deshabilitar paralelismo de tokenizers y otras optimizaciones
 ENV TOKENIZERS_PARALLELISM=false
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONOPTIMIZE=1
-ENV TRANSFORMERS_OFFLINE=1
-ENV HF_HUB_OFFLINE=1
-
-# Pre-descargar el modelo 0.6B durante la construcción
-RUN python3 -c " \
-import os; \
-os.environ['HF_HOME'] = '/app/models'; \
-os.environ['HF_HUB_CACHE'] = '/app/models'; \
-from huggingface_hub import snapshot_download; \
-print('Descargando modelo Qwen3-TTS 0.6B...'); \
-snapshot_download( \
-    'Qwen/Qwen3-TTS-12Hz-0.6B-Base', \
-    local_dir='/app/models/models--Qwen--Qwen3-TTS-12Hz-0.6B-Base', \
-    local_dir_use_symlinks=False \
-); \
-print('Modelo descargado exitosamente!') \
-"
 
 # Verificar que el modelo esté descargado
 RUN ls -la /app/models/ && echo 'Verificación completa'
