@@ -1304,15 +1304,13 @@ async def get_model_status():
     
     # Use backend-specific model IDs
     if backend_type == "mlx":
-        tts_1_7b_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
-        tts_0_6b_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"  # Fallback to 1.7B
+        tts_0_6b_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"  # Currently using 1.7B as fallback since 0.6B not available in MLX
         # MLX backend uses openai/whisper-* models, not mlx-community
         whisper_base_id = "openai/whisper-base"
         whisper_small_id = "openai/whisper-small"
         whisper_medium_id = "openai/whisper-medium"
         whisper_large_id = "openai/whisper-large"
     else:
-        tts_1_7b_id = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
         tts_0_6b_id = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
         whisper_base_id = "openai/whisper-base"
         whisper_small_id = "openai/whisper-small"
@@ -1320,13 +1318,6 @@ async def get_model_status():
         whisper_large_id = "openai/whisper-large"
     
     model_configs = [
-        {
-            "model_name": "qwen-tts-1.7B",
-            "display_name": "Qwen TTS 1.7B",
-            "hf_repo_id": tts_1_7b_id,
-            "model_size": "1.7B",
-            "check_loaded": lambda: check_tts_loaded("1.7B"),
-        },
         {
             "model_name": "qwen-tts-0.6B",
             "display_name": "Qwen TTS 0.6B",
@@ -1521,10 +1512,6 @@ async def trigger_model_download(request: models.ModelDownloadRequest):
     progress_manager = get_progress_manager()
     
     model_configs = {
-        "qwen-tts-1.7B": {
-            "model_size": "1.7B",
-            "load_func": lambda: tts.get_tts_model().load_model("1.7B"),
-        },
         "qwen-tts-0.6B": {
             "model_size": "0.6B",
             "load_func": lambda: tts.get_tts_model().load_model("0.6B"),
@@ -1595,11 +1582,6 @@ async def delete_model(model_name: str):
     
     # Map model names to HuggingFace repo IDs
     model_configs = {
-        "qwen-tts-1.7B": {
-            "hf_repo_id": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-            "model_size": "1.7B",
-            "model_type": "tts",
-        },
         "qwen-tts-0.6B": {
             "hf_repo_id": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
             "model_size": "0.6B",

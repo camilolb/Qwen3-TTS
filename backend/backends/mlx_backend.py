@@ -18,7 +18,7 @@ from ..utils.tasks import get_task_manager
 class MLXTTSBackend:
     """MLX-based TTS backend using mlx-audio."""
     
-    def __init__(self, model_size: str = "1.7B"):
+    def __init__(self, model_size: str = "0.6B"):
         self.model = None
         self.model_size = model_size
         self._current_model_size = None
@@ -39,9 +39,7 @@ class MLXTTSBackend:
         """
         # MLX model mapping
         mlx_model_map = {
-            "1.7B": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
-            # 0.6B not yet converted to MLX format
-            "0.6B": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",  # Fallback to 1.7B
+            "0.6B": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",  # Currently using 1.7B as fallback since 0.6B not available in MLX
         }
         
         if model_size not in mlx_model_map:

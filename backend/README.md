@@ -299,9 +299,8 @@ The Qwen3-TTS models are automatically downloaded from HuggingFace Hub on first 
 
 **No manual download required!** The models will be cached locally after the first download.
 
-Available models:
-- **1.7B** (recommended): `Qwen/Qwen3-TTS-12Hz-1.7B-Base` (~4GB)
-- **0.6B** (faster): `Qwen/Qwen3-TTS-12Hz-0.6B-Base` (~2GB)
+Available model:
+- **0.6B** (optimized): `Qwen/Qwen3-TTS-12Hz-0.6B-Base` (~2GB)
 
 **Note:** The first generation will take longer as the model downloads. Subsequent generations will use the cached model.
 
@@ -313,11 +312,11 @@ If you prefer to download models manually or have limited internet during runtim
 # Install huggingface-cli
 pip install huggingface_hub
 
-# Download 1.7B model
-huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-Base
+# Download 0.6B model
+huggingface-cli download Qwen/Qwen3-TTS-12Hz-0.6B-Base
 
 # Or use Python
-python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-Base')"
+python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-TTS-12Hz-0.6B-Base')"
 ```
 
 Models are cached in `~/.cache/huggingface/hub/` by default.
@@ -439,9 +438,7 @@ Error responses include details:
 
 1. **Use multi-sample profiles** - Better quality than single sample
 2. **Let caching work** - Voice prompts are cached automatically
-3. **Use 0.6B model on CPU** - Faster than 1.7B with acceptable quality
-4. **Use 1.7B model on GPU** - Best quality, still fast
-5. **Unload Whisper after transcription** - Frees VRAM for TTS
+3. **Use 0.6B model** - Optimized for performance across all platforms
 
 ## TODO
 

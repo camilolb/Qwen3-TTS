@@ -63,7 +63,7 @@ async def monitor_sse_stream(model_name: str, timeout: int = 120):
     return events
 
 
-async def trigger_generation(profile_id: str, text: str, model_size: str = "1.7B"):
+async def trigger_generation(profile_id: str, text: str, model_size: str = "0.6B"):
     """Trigger TTS generation via the API."""
     url = "http://localhost:8000/generate"
 
@@ -151,7 +151,7 @@ async def test_generation_with_cached_model():
     print("Actual UX Issue: Users see 'started' and 'finished' events even for cached models")
     print("=" * 80)
 
-    model_size = "1.7B"
+    model_size = "0.6B"
     model_name = f"qwen-tts-{model_size}"
 
     # Get a profile

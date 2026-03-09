@@ -7,7 +7,6 @@ import asyncio
 import torch
 import numpy as np
 from pathlib import Path
-import os
 
 
 from . import TTSBackend, STTBackend
@@ -22,7 +21,7 @@ class PyTorchTTSBackend:
     """PyTorch-based TTS backend using Qwen3-TTS."""
     
     def __init__(self, model_size: str = None):
-        self.model_size = model_size or os.getenv("TTS_MODEL_SIZE", "0.6B")
+        self.model_size = "0.6B"
         self.model = None
         self.device = self._get_device()
         self._current_model_size = None
@@ -65,7 +64,6 @@ class PyTorchTTSBackend:
             HuggingFace Hub model ID
         """
         hf_model_map = {
-            "1.7B": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
             "0.6B": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
         }
         
