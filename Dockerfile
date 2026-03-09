@@ -6,8 +6,15 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 # Crear directorios para modelos
 RUN mkdir -p /app/models
 
-# Tu fork con cambios para forzar 0.6B
-RUN git clone https://github.com/camilolb/Qwen3-TTS.git /opt/Qwen3-TTS
+# Usar el código proporcionado por Easypanel (contexto de construcción)
+WORKDIR /opt/Qwen3-TTS
+COPY . .
+
+# Instalar dependencias del backend
+RUN pip install --no-cache-dir -r backend/requirements.txt
+# Asegurar que qwen-tts esté instalado desde el repo oficial si no está en PyPI
+RUN pip install --no-cache-dir git+https://github.com/QwenLM/Qwen3-TTS.git
+
 ENV PYTHONPATH=/opt/Qwen3-TTS
 
 # Configurar variables de entorno para modelos (sin offline mode aún)

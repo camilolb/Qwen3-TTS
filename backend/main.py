@@ -1332,27 +1332,6 @@ async def get_model_status():
             "model_size": "base",
             "check_loaded": lambda: check_whisper_loaded("base"),
         },
-        {
-            "model_name": "whisper-small",
-            "display_name": "Whisper Small",
-            "hf_repo_id": whisper_small_id,
-            "model_size": "small",
-            "check_loaded": lambda: check_whisper_loaded("small"),
-        },
-        {
-            "model_name": "whisper-medium",
-            "display_name": "Whisper Medium",
-            "hf_repo_id": whisper_medium_id,
-            "model_size": "medium",
-            "check_loaded": lambda: check_whisper_loaded("medium"),
-        },
-        {
-            "model_name": "whisper-large",
-            "display_name": "Whisper Large",
-            "hf_repo_id": whisper_large_id,
-            "model_size": "large",
-            "check_loaded": lambda: check_whisper_loaded("large"),
-        },
     ]
     
     # Build a mapping of model_name -> hf_repo_id so we can check if shared repos are downloading

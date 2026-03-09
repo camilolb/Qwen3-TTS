@@ -45,7 +45,7 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
       text: '',
       language: 'en',
       seed: undefined,
-      modelSize: '1.7B',
+      modelSize: '0.6B',
       instruct: '',
       ...options.defaultValues,
     },
@@ -67,8 +67,9 @@ export function useGenerationForm(options: UseGenerationFormOptions = {}) {
     try {
       setIsGenerating(true);
 
-      const modelName = `qwen-tts-${data.modelSize}`;
-      const displayName = data.modelSize === '1.7B' ? 'Qwen TTS 1.7B' : 'Qwen TTS 0.6B';
+      const size = data.modelSize || '0.6B';
+      const modelName = `qwen-tts-${size}`;
+      const displayName = size === '1.7B' ? 'Qwen TTS 1.7B' : 'Qwen TTS 0.6B';
 
       try {
         const modelStatus = await apiClient.getModelStatus();
