@@ -1,5 +1,8 @@
 FROM ghcr.io/jamiepine/voicebox:latest
 
+# Instalar git (necesario para clonar el repo)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Crear directorios para modelos
 RUN mkdir -p /app/models
 
