@@ -616,6 +616,13 @@ async def _background_generate_task(
             # Generate audio - This is the CPU intensive part
             audio, sample_rate = await tts_model.generate(data.text, voice_prompt, data.language, data.seed, data.instruct)
 
+            # Abortar si fue cancelada por otra petición entrante
+            task_status = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
+            if task_status and task_status.status == "cancelled":
+                print(f"Task {generation_id} was successfully skipped. Discarding audio to free RAM.")
+                task_manager.complete_generation(generation_id)
+                return
+
             # Save results
             duration = len(audio) / sample_rate
             audio_path = config.get_generations_dir() / f"{generation_id}.wav"
@@ -665,10 +672,12 @@ async def generate_speech_async(
     """Start an asynchronous speech generation task with locking and DB persistence."""
     
     task_manager = get_task_manager()
-    # Si ya hay un proceso, en lugar de rechazarlo, lo cancelamos para empezar este nuevo
+    # Si hay un proceso de CPU corriendo no lo "asesinamos" a la fuerza porque PyTorch ignora el kill de Python, 
+    # y dejaríamos hilos zombis duplicando la RAM (eso causa OOM y reinicia el servidor).
+    # Lo que hacemos es cancelarlo en DB. El hilo actual acabará, pero al chequear la DB botará su resultado en lugar de guardarlo,
+    # cediendo el Lock ordenadamente a la nueva tarea.
     if task_manager.generation_lock.locked():
         for active_task_id in list(task_manager._task_handles.keys()):
-            task_manager.cancel_task(active_task_id)
             db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled"})
         db.commit()
 
@@ -700,14 +709,11 @@ async def stop_generation(
     """Stop/Cancel a running generation task."""
     task_manager = get_task_manager()
     
-    # 1. Update DB to cancelled
+    # 1. Update DB to cancelled (esto avisa a la tarea de fondo que debe abortar y soltar la CPU ordenadamente)
     db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "cancelled"})
     db.commit()
     
-    # 2. Cancel the asyncio task if it exists on this worker
-    cancelled = task_manager.cancel_task(generation_id)
-    
-    return {"id": generation_id, "status": "cancelled", "process_interrupted": cancelled}
+    return {"id": generation_id, "status": "cancelled", "process_interrupted": True}
 
 
 @app.get("/generate/{generation_id}/status", response_model=models.GenerationStatusResponse)
