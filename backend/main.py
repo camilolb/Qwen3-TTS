@@ -591,9 +591,10 @@ async def _background_generate_task(
     # Adquirir el bloqueo global: Solo una generación a la vez
     async with task_manager.generation_lock:
         try:
-            # Check if task was cancelled while waiting for lock
+            # Check if task was cancelled while waiting for lock (O aborto temprano)
             task_status = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
-            if task_status and task_status.status == "cancelled":
+            if task_status and "cancelled" in task_status.status.lower():
+                print(f"Task {generation_id} was cancelled before starting processing. Reason: {task_status.status}")
                 return
 
             # Get profile
@@ -645,14 +646,12 @@ async def _background_generate_task(
             # Completed
             db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "completed"})
             db.commit()
-            task_manager.complete_generation(generation_id)
             
         except asyncio.CancelledError:
             # Handle task cancellation
             print(f"Task {generation_id} was cancelled")
             db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "cancelled"})
             db.commit()
-            task_manager.complete_generation(generation_id)
         except Exception as e:
             error_msg = str(e)
             print(f"Error in background generation: {error_msg}")
@@ -660,6 +659,7 @@ async def _background_generate_task(
             db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "error", "error": error_msg})
             db.commit()
         finally:
+            task_manager.complete_generation(generation_id)
             db.close()
 
 
@@ -687,10 +687,12 @@ async def generate_speech_async(
 
     # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación
     if task_manager.generation_lock.locked():
-        print(f"[{datetime.utcnow().isoformat()}] WARNING: CPU is busy. A new request arrived, so the old running task will be cancelled.")
+        print(f"[{datetime.utcnow().isoformat()}] WARNING: CPU is busy. A new request arrived, so the old running task {active_task_id if 'active_task_id' in locals() else ''} will be cancelled.")
         for active_task_id in list(task_manager._task_handles.keys()):
             if active_task_id != generation_id:
-                db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
+                task_status = db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).first()
+                if task_status and task_status.status == "processing":
+                    db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
         db.commit()
 
     # Check profile
