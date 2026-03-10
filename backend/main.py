@@ -99,7 +99,13 @@ async def shutdown():
     return {"message": "Shutting down..."}
 
 
-@app.get("/health", response_model=models.HealthResponse)
+@app.get("/health")
+async def health_simple():
+    """Simple health check - fast, no model loading."""
+    return {"status": "ok"}
+
+
+@app.get("/health/full", response_model=models.HealthResponse)
 async def health():
     """Health check endpoint."""
     from huggingface_hub import hf_hub_download, constants as hf_constants
@@ -743,7 +749,6 @@ async def get_generation_status(
     db: Session = Depends(get_db),
 ):
     """Reliable poll status for n8n."""
-    # Consultar la base de datos (fuente de verdad multi-proceso)
     task = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
     
     execution_time = None
@@ -754,27 +759,57 @@ async def get_generation_status(
             execution_time = (task.updated_at - task.created_at).total_seconds()
 
     if not task:
-        # Fallback: check history in case task record was cleaned or sync generated
-        gen = await history.get_generation(generation_id, db)
+        gen = db.query(DBGeneration.id, DBGeneration.audio_path, DBGeneration.duration).filter_by(id=generation_id).first()
         if gen:
             return models.GenerationStatusResponse(
                 id=generation_id, status="completed", 
-                audio_path=gen.audio_path, duration=gen.duration, 
-                binario=gen.binario
+                audio_path=gen.audio_path, duration=gen.duration
             )
         raise HTTPException(status_code=404, detail="Task not found")
 
     if task.status == "completed":
-        gen = await history.get_generation(generation_id, db)
+        gen = db.query(DBGeneration.id, DBGeneration.audio_path, DBGeneration.duration).filter_by(id=generation_id).first()
         if gen:
             return models.GenerationStatusResponse(
                 id=generation_id, status="completed", 
-                audio_path=gen.audio_path, duration=gen.duration, 
-                binario=gen.binario, execution_time=execution_time
+                audio_path=gen.audio_path, duration=gen.duration, execution_time=execution_time
             )
         return models.GenerationStatusResponse(id=generation_id, status="completed", execution_time=execution_time)
 
     return models.GenerationStatusResponse(id=generation_id, status=task.status, error=task.error, execution_time=execution_time)
+
+
+@app.get("/generate/{generation_id}/audio")
+async def get_generation_audio(
+    generation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get audio file directly when generation is completed. For n8n integration."""
+    task = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
+    
+    if not task:
+        gen = db.query(DBGeneration).filter_by(id=generation_id).first()
+        if not gen:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        if gen.status != "completed":
+            raise HTTPException(status_code=400, detail="Generation not completed")
+        audio_path = Path(gen.audio_path)
+    else:
+        if task.status != "completed":
+            raise HTTPException(status_code=400, detail=f"Generation {task.status}")
+        gen = db.query(DBGeneration).filter_by(id=generation_id).first()
+        if not gen:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        audio_path = Path(gen.audio_path)
+    
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    return FileResponse(
+        audio_path,
+        media_type="audio/wav",
+        filename=f"generation_{generation_id}.wav",
+    )
 
 
 @app.post("/generate", response_model=models.GenerationResponse)
@@ -1388,19 +1423,24 @@ async def export_story_audio(
 @app.get("/audio/{generation_id}")
 async def get_audio(generation_id: str, db: Session = Depends(get_db)):
     """Serve generated audio file."""
-    generation = await history.get_generation(generation_id, db)
-    if not generation:
-        raise HTTPException(status_code=404, detail="Generation not found")
-    
-    audio_path = Path(generation.audio_path)
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found")
-    
-    return FileResponse(
-        audio_path,
-        media_type="audio/wav",
-        filename=f"generation_{generation_id}.wav",
-    )
+    try:
+        generation = db.query(DBGeneration).filter_by(id=generation_id).first()
+        if not generation:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        
+        audio_path = Path(generation.audio_path)
+        if not audio_path.exists():
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        return FileResponse(
+            audio_path,
+            media_type="audio/wav",
+            filename=f"generation_{generation_id}.wav",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving audio: {str(e)}")
 
 
 @app.get("/samples/{sample_id}")
