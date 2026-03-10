@@ -22,6 +22,7 @@ class GenerationTask:
     """Represents an active generation task."""
     task_id: str
     profile_id: str
+    text: str # Full text for complete deduplication
     text_preview: str  # First 50 chars of text
     status: str = "processing" # processing, complete, error
     error: Optional[str] = None
@@ -62,6 +63,7 @@ class TaskManager:
         self._active_generations[task_id] = GenerationTask(
             task_id=task_id,
             profile_id=profile_id,
+            text=text,
             text_preview=text_preview,
         )
     

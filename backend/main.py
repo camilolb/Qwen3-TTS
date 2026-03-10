@@ -672,10 +672,15 @@ async def generate_speech_async(
     """Start an asynchronous speech generation task with locking and DB persistence."""
     
     task_manager = get_task_manager()
-    # Si hay un proceso de CPU corriendo no lo "asesinamos" a la fuerza porque PyTorch ignora el kill de Python, 
-    # y dejaríamos hilos zombis duplicando la RAM (eso causa OOM y reinicia el servidor).
-    # Lo que hacemos es cancelarlo en DB. El hilo actual acabará, pero al chequear la DB botará su resultado en lugar de guardarlo,
-    # cediendo el Lock ordenadamente a la nueva tarea.
+    
+    # 0. Anti-Deduplicación inteligente (Fix para n8n)
+    # n8n suele hacer "doble disparo" por accidente o enviar 2 veces la misma frase al recargar flujos.
+    # En lugar de castigarlo cancelando tu tarea original, detectamos si ya hay una tarea encolada con el MISMO TEXTO.
+    for running_task in task_manager.get_active_generations():
+        if running_task.text == data.text and running_task.profile_id == data.profile_id:
+            return models.AsyncGenerationResponse(id=running_task.task_id)
+
+    # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación segura que acordamos.
     if task_manager.generation_lock.locked():
         for active_task_id in list(task_manager._task_handles.keys()):
             db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled"})
