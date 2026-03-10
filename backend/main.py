@@ -618,7 +618,7 @@ async def _background_generate_task(
 
             # Abortar si fue cancelada por otra petición entrante
             task_status = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
-            if task_status and task_status.status == "cancelled":
+            if task_status and "cancelled" in task_status.status:
                 print(f"Task {generation_id} was successfully skipped. Discarding audio to free RAM.")
                 task_manager.complete_generation(generation_id)
                 return
@@ -677,13 +677,14 @@ async def generate_speech_async(
     # n8n suele hacer "doble disparo" por accidente o enviar 2 veces la misma frase al recargar flujos.
     # En lugar de castigarlo cancelando tu tarea original, detectamos si ya hay una tarea encolada con el MISMO TEXTO.
     for running_task in task_manager.get_active_generations():
-        if running_task.text == data.text and running_task.profile_id == data.profile_id:
+        if running_task.text.strip() == data.text.strip() and running_task.profile_id == data.profile_id:
             return models.AsyncGenerationResponse(id=running_task.task_id)
 
     # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación segura que acordamos.
     if task_manager.generation_lock.locked():
+        print(f"[{datetime.utcnow().isoformat()}] WARNING: CPU is busy. A new request arrived, so the old running task will be cancelled.")
         for active_task_id in list(task_manager._task_handles.keys()):
-            db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled"})
+            db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
         db.commit()
 
     generation_id = str(uuid.uuid4())
@@ -715,10 +716,10 @@ async def stop_generation(
     task_manager = get_task_manager()
     
     # 1. Update DB to cancelled (esto avisa a la tarea de fondo que debe abortar y soltar la CPU ordenadamente)
-    db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "cancelled"})
+    db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).update({"status": "cancelled (by user stop request)"})
     db.commit()
     
-    return {"id": generation_id, "status": "cancelled", "process_interrupted": True}
+    return {"id": generation_id, "status": "cancelled (by user stop request)", "process_interrupted": True}
 
 
 @app.get("/generate/{generation_id}/status", response_model=models.GenerationStatusResponse)
