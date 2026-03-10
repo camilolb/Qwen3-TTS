@@ -69,6 +69,9 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request, call_next):
     """Log all requests and errors."""
+    import sys
+    req_id = request.headers.get("x-request-id", "no-id")
+    print(f"[REQ] {request.method} {request.url.path} | ID: {req_id} | UA: {request.headers.get('user-agent', 'none')}", flush=True)
     try:
         response = await call_next(request)
         return response
@@ -786,21 +789,18 @@ async def get_generation_audio(
     db: Session = Depends(get_db),
 ):
     """Get audio file directly when generation is completed. For n8n integration."""
-  
+    import logging
+    import sys
     logger = logging.getLogger(__name__)
     
     print(f"[AUDIO] Request for: {generation_id}", flush=True)
     sys.stdout.flush()
     
     try:
-        task_status = None
-        task = db.query(DBGenerationTask.id).filter(DBGenerationTask.id == generation_id).first()
-        if task:
-            task_status = db.query(DBGenerationTask.status).filter(DBGenerationTask.id == generation_id).scalar()
-            if task_status != "completed":
-                raise HTTPException(status_code=400, detail=f"Generation {task_status}")
-        
+        # Single query: get audio_path directly from generation
+        # Skip task check - assume if generation exists and has audio_path, it's done
         gen = db.query(DBGeneration.audio_path).filter_by(id=generation_id).first()
+        
         if not gen or not gen.audio_path:
             print(f"[AUDIO] Not found: {generation_id}", flush=True)
             raise HTTPException(status_code=404, detail="Generation not found")

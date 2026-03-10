@@ -150,6 +150,10 @@ def init_db():
     engine = create_engine(
         f"sqlite:///{_db_path}",
         connect_args={"check_same_thread": False},
+        pool_size=20,
+        max_overflow=30,
+        pool_timeout=30,
+        pool_pre_ping=True,
     )
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
