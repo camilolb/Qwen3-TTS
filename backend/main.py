@@ -673,25 +673,30 @@ async def generate_speech_async(
     
     task_manager = get_task_manager()
     
-    # 0. Anti-Deduplicación inteligente (Fix para n8n)
-    # n8n suele hacer "doble disparo" por accidente o enviar 2 veces la misma frase al recargar flujos.
-    # En lugar de castigarlo cancelando tu tarea original, detectamos si ya hay una tarea encolada con el MISMO TEXTO.
+    # 0. Anti-Deduplicación atómica (Race-condition Fix para n8n)
+    # Python asyncio no muta de hilo pero SÍ pausa en los 'await'. n8n envía ráfagas de peticiones 
+    # en el mismo milisegundo. Hacemos el chequeo antes de CUALQUIER await para 100% atomicidad.
     for running_task in task_manager.get_active_generations():
         if running_task.text.strip() == data.text.strip() and running_task.profile_id == data.profile_id:
             return models.AsyncGenerationResponse(id=running_task.task_id)
 
-    # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación segura que acordamos.
+    generation_id = str(uuid.uuid4())
+    
+    # ATÓMICO: Registramos de inmediato en memoria para que los clones del mismo milisegundo ya la rechacen
+    task_manager.start_generation(generation_id, data.profile_id, data.text)
+
+    # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación
     if task_manager.generation_lock.locked():
         print(f"[{datetime.utcnow().isoformat()}] WARNING: CPU is busy. A new request arrived, so the old running task will be cancelled.")
         for active_task_id in list(task_manager._task_handles.keys()):
-            db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
+            if active_task_id != generation_id:
+                db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
         db.commit()
 
-    generation_id = str(uuid.uuid4())
-    
     # Check profile
     profile = await profiles.get_profile(data.profile_id, db)
     if not profile:
+        task_manager.complete_generation(generation_id) # Cleanup
         raise HTTPException(status_code=404, detail="Profile not found")
 
     # DB Task record
@@ -701,8 +706,7 @@ async def generate_speech_async(
 
     # Create background task and store its handle for cancellation
     gen_task = asyncio.create_task(_background_generate_task(generation_id, data))
-    get_task_manager().register_task_handle(generation_id, gen_task)
-    get_task_manager().start_generation(generation_id, data.profile_id, data.text)
+    task_manager.register_task_handle(generation_id, gen_task)
     
     return models.AsyncGenerationResponse(id=generation_id)
 
