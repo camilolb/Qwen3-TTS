@@ -664,12 +664,13 @@ async def generate_speech_async(
 ):
     """Start an asynchronous speech generation task with locking and DB persistence."""
     
-    # Validar si ya hay un proceso corriendo
-    if get_task_manager().generation_lock.locked():
-        raise HTTPException(
-            status_code=409, 
-            detail="A generation process is already running. Please wait for it to finish."
-        )
+    task_manager = get_task_manager()
+    # Si ya hay un proceso, en lugar de rechazarlo, lo cancelamos para empezar este nuevo
+    if task_manager.generation_lock.locked():
+        for active_task_id in list(task_manager._task_handles.keys()):
+            task_manager.cancel_task(active_task_id)
+            db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled"})
+        db.commit()
 
     generation_id = str(uuid.uuid4())
     
@@ -718,6 +719,13 @@ async def get_generation_status(
     # Consultar la base de datos (fuente de verdad multi-proceso)
     task = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
     
+    execution_time = None
+    if task:
+        if task.status == "processing":
+            execution_time = (datetime.utcnow() - task.created_at).total_seconds()
+        elif task.updated_at and task.created_at:
+            execution_time = (task.updated_at - task.created_at).total_seconds()
+
     if not task:
         # Fallback: check history in case task record was cleaned or sync generated
         gen = await history.get_generation(generation_id, db)
@@ -735,11 +743,11 @@ async def get_generation_status(
             return models.GenerationStatusResponse(
                 id=generation_id, status="completed", 
                 audio_path=gen.audio_path, duration=gen.duration, 
-                binario=gen.binario
+                binario=gen.binario, execution_time=execution_time
             )
-        return models.GenerationStatusResponse(id=generation_id, status="completed")
+        return models.GenerationStatusResponse(id=generation_id, status="completed", execution_time=execution_time)
 
-    return models.GenerationStatusResponse(id=generation_id, status=task.status, error=task.error)
+    return models.GenerationStatusResponse(id=generation_id, status=task.status, error=task.error, execution_time=execution_time)
 
 
 @app.post("/generate", response_model=models.GenerationResponse)

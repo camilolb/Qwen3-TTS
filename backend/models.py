@@ -90,8 +90,8 @@ class GenerationStatusResponse(BaseModel):
     audio_path: Optional[str] = None
     duration: Optional[float] = None
     binario: Optional[str] = Field(None, alias="binary_base64") # Base64 for n8n
+    execution_time: Optional[float] = None # Time taken in seconds
     error: Optional[str] = None
-
 
 class HistoryQuery(BaseModel):
     """Query model for generation history."""
