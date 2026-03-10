@@ -65,6 +65,19 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all requests and errors."""
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        import traceback
+        print(f"ERROR: {request.method} {request.url} - {e}")
+        print(traceback.format_exc())
+        raise
+
+
 # ============================================
 # ROOT & HEALTH ENDPOINTS
 # ============================================

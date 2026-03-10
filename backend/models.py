@@ -69,11 +69,10 @@ class GenerationResponse(BaseModel):
     duration: float
     seed: Optional[int]
     instruct: Optional[str]
-    binario: Optional[str] = Field(None, alias="binary_base64") # Base64 for n8n
+    binario: Optional[str] = Field(None, alias="binary_base64")
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class AsyncGenerationResponse(BaseModel):
@@ -92,6 +91,8 @@ class GenerationStatusResponse(BaseModel):
     binario: Optional[str] = Field(None, alias="binary_base64") # Base64 for n8n
     execution_time: Optional[float] = None # Time taken in seconds
     error: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
 
 class HistoryQuery(BaseModel):
     """Query model for generation history."""
