@@ -685,15 +685,11 @@ async def generate_speech_async(
     # ATÓMICO: Registramos de inmediato en memoria para que los clones del mismo milisegundo ya la rechacen
     task_manager.start_generation(generation_id, data.profile_id, data.text)
 
-    # Si hay un proceso con OTRA FRASE diferente, ejecutamos el flujo de cancelación
-    if task_manager.generation_lock.locked():
-        print(f"[{datetime.utcnow().isoformat()}] WARNING: CPU is busy. A new request arrived, so the old running task {active_task_id if 'active_task_id' in locals() else ''} will be cancelled.")
-        for active_task_id in list(task_manager._task_handles.keys()):
-            if active_task_id != generation_id:
-                task_status = db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).first()
-                if task_status and task_status.status == "processing":
-                    db.query(DBGenerationTask).filter(DBGenerationTask.id == active_task_id).update({"status": "cancelled (replaced by new task)"})
-        db.commit()
+    # Nota Arquitectónica: 
+    # n8n nos envía un batch con MÚLTIPLES PÁRRAFOS DIFERENTES disparados de golpe en ráfaga de red en un sólo segundo.
+    # Dado que el texto es distinto, el deduplicador los deja pasar. 
+    # Ahora, en lugar de que "se maten unos a otros", el Lock en _background_generate_task actuará como una COLA.
+    # El primero procesará y los demás esperarán pausadamente aquí de forma segura para la memoria.
 
     # Check profile
     profile = await profiles.get_profile(data.profile_id, db)
