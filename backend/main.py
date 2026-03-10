@@ -663,6 +663,14 @@ async def generate_speech_async(
     db: Session = Depends(get_db),
 ):
     """Start an asynchronous speech generation task with locking and DB persistence."""
+    
+    # Validar si ya hay un proceso corriendo
+    if get_task_manager().generation_lock.locked():
+        raise HTTPException(
+            status_code=409, 
+            detail="A generation process is already running. Please wait for it to finish."
+        )
+
     generation_id = str(uuid.uuid4())
     
     # Check profile
