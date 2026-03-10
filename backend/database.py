@@ -2,7 +2,7 @@
 SQLite database ORM using SQLAlchemy.
 """
 
-from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Text, ForeignKey, Boolean, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime
@@ -40,6 +40,10 @@ class ProfileSample(Base):
 class Generation(Base):
     """Generation history database model."""
     __tablename__ = "generations"
+    __table_args__ = (
+        Index('idx_generations_profile_id', 'profile_id'),
+        Index('idx_generations_created_at', 'created_at'),
+    )
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     profile_id = Column(String, ForeignKey("profiles.id"), nullable=False)
@@ -56,6 +60,9 @@ class Generation(Base):
 class GenerationTask(Base):
     """Task tracking to avoid multi-worker issues."""
     __tablename__ = "generation_tasks"
+    __table_args__ = (
+        Index('idx_generation_tasks_status', 'status'),
+    )
 
     id = Column(String, primary_key=True)
     status = Column(String, default="processing") # processing, error, completed

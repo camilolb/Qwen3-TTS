@@ -24,7 +24,8 @@ import signal
 import os
 from urllib.parse import quote
 import base64
-
+import logging
+import sys
 
 def _safe_content_disposition(disposition_type: str, filename: str) -> str:
     """Build a Content-Disposition header that is safe for non-ASCII filenames.
@@ -785,31 +786,43 @@ async def get_generation_audio(
     db: Session = Depends(get_db),
 ):
     """Get audio file directly when generation is completed. For n8n integration."""
-    task = db.query(DBGenerationTask).filter(DBGenerationTask.id == generation_id).first()
+  
+    logger = logging.getLogger(__name__)
     
-    if not task:
-        gen = db.query(DBGeneration).filter_by(id=generation_id).first()
-        if not gen:
+    print(f"[AUDIO] Request for: {generation_id}", flush=True)
+    sys.stdout.flush()
+    
+    try:
+        task_status = None
+        task = db.query(DBGenerationTask.id).filter(DBGenerationTask.id == generation_id).first()
+        if task:
+            task_status = db.query(DBGenerationTask.status).filter(DBGenerationTask.id == generation_id).scalar()
+            if task_status != "completed":
+                raise HTTPException(status_code=400, detail=f"Generation {task_status}")
+        
+        gen = db.query(DBGeneration.audio_path).filter_by(id=generation_id).first()
+        if not gen or not gen.audio_path:
+            print(f"[AUDIO] Not found: {generation_id}", flush=True)
             raise HTTPException(status_code=404, detail="Generation not found")
-        if gen.status != "completed":
-            raise HTTPException(status_code=400, detail="Generation not completed")
+        
         audio_path = Path(gen.audio_path)
-    else:
-        if task.status != "completed":
-            raise HTTPException(status_code=400, detail=f"Generation {task.status}")
-        gen = db.query(DBGeneration).filter_by(id=generation_id).first()
-        if not gen:
-            raise HTTPException(status_code=404, detail="Generation not found")
-        audio_path = Path(gen.audio_path)
-    
-    if not audio_path.exists():
-        raise HTTPException(status_code=404, detail="Audio file not found")
-    
-    return FileResponse(
-        audio_path,
-        media_type="audio/wav",
-        filename=f"generation_{generation_id}.wav",
-    )
+        print(f"[AUDIO] Path: {audio_path}, exists: {audio_path.exists()}", flush=True)
+        
+        if not audio_path.exists():
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        return FileResponse(
+            audio_path,
+            media_type="audio/wav",
+            filename=f"generation_{generation_id}.wav",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[AUDIO] Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/generate", response_model=models.GenerationResponse)
