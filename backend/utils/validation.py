@@ -6,7 +6,7 @@ from typing import Tuple, Optional
 from pathlib import Path
 
 
-def validate_text(text: str, max_length: int = 5000) -> Tuple[bool, Optional[str]]:
+def validate_text(text: str, max_length: int = 25000) -> Tuple[bool, Optional[str]]:
     """
     Validate text input.
     
